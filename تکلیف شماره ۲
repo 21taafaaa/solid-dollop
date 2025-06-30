@@ -1,0 +1,51 @@
+temperature = int(input("Enter the temperature: "))
+
+if temperature > 30:
+    print("It's a hot day.")
+elif temperature > 20:
+    print("It's a nice day.")
+elif temperature > 10:
+    print("It's a bit chilly.")
+else:
+    print("It's cold outside.")
+
+age = int(input("Enter your age: "))
+has_ticket = input("Do you have a ticket? (True/False): ")
+has_ticket = has_ticket.strip().lower() == "true"
+
+if age >= 18:
+    if has_ticket:
+        print("You can enter the concert.")
+    else:
+        print("You need a ticket to enter.")
+else:
+    print("You are too young for the concert.")
+fruits = ["apple", "banana", "mango", "orange", "grape"]
+
+for fruit in fruits:
+    print(f"I like {fruit}")
+
+print("\nLetters in 'Python':")
+for letter in "Python":
+    print(letter)
+for num in range(1, 11):
+    print(num)
+
+
+total = 0
+for num in range(1, 11):
+    total += num
+
+print("Sum:", total)
+
+count = 1
+
+while True:
+    if count == 3:
+        count += 1
+        continue
+    if count == 7:
+        break
+    print(count)
+    count += 1
+
