@@ -1,0 +1,51 @@
+patients = [
+    {
+        'name': 'Alice',
+        'age': 30,
+        'weight': 60,
+        'dosages': [
+            {'time': '08:00', 'dose': 10},
+            {'time': '12:00', 'dose': 40}
+        ]
+    },
+    {
+        'name': 'Bob',
+        'age': 16,
+        'weight': 40,
+        'dosages': [
+            {'time': '08:00', 'dose': 5},
+            {'time': '12:00', 'dose': -5}
+        ]
+    }
+]
+
+for patient in patients:
+    name = patient['name']
+    age = patient['age']
+    weight = patient['weight']
+    
+    if age >= 18:
+        min_dose = 0.1 * weight
+        max_dose = 0.5 * weight
+    else:
+        min_dose = 0.05 * weight
+        max_dose = 0.3 * weight
+    
+    print(f"{name} (Age: {age}, Weight: {weight} kg, Safe Range: {min_dose:.1f}-{max_dose:.1f} mg):")
+    
+    valid_doses = 0
+    for dosage in patient['dosages']:
+        time = dosage['time']
+        dose = dosage['dose']
+        
+        if dose <= 0:
+            print(f"  Invalid dose at {time}: Dose must be positive.")
+        else:
+            valid_doses += 1
+            if min_dose <= dose <= max_dose:
+                status = "Safe"
+            else:
+                status = "Unsafe"
+            print(f"  {time}: Dose={dose} mg - {status}")
+    
+    print(f"  Total valid doses: {valid_doses}\n")
