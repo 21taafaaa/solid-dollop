@@ -1,0 +1,162 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+def create_ground_truth(size=256):
+    x = np.linspace(-1, 1, size)
+    y = np.linspace(-1, 1, size)
+    xx, yy = np.meshgrid(x, y)
+    
+    circle = (xx**2 + yy**2) < 0.2**2
+    ring = np.logical_and((xx**2 + yy**2) > 0.3**2, (xx**2 + yy**2) < 0.4**2)
+    rectangle = np.logical_and(np.abs(xx) < 0.4, np.abs(yy) < 0.2)
+    gaussian = np.exp(-(xx**2 + yy**2) / (2 * 0.15**2))
+    
+    image = np.zeros((size, size))
+    image += 0.6 * circle
+    image += 0.8 * ring
+    image += 0.7 * rectangle
+    image += 1.0 * gaussian
+    
+    image = (image - np.min(image)) / (np.max(image) - np.min(image))
+    support_mask = (xx**2 + yy**2) < 0.6**2
+    
+    return image, support_mask
+
+def create_measurements(image, noise_level=0.05, keep_fraction=0.65):
+    F_true = np.fft.fftshift(np.fft.fft2(image))
+    M_true = np.abs(F_true)
+    
+    k = image.shape[0]
+    x = np.linspace(-1, 1, k)
+    y = np.linspace(-1, 1, k)
+    xx, yy = np.meshgrid(x, y)
+    r = np.sqrt(xx**2 + yy**2)
+    
+    prob_mask = np.exp(-r**2 / 0.3)
+    prob_mask /= np.max(prob_mask)
+    random_mask = np.random.rand(k, k) < prob_mask * keep_fraction
+    
+    noise = noise_level * np.mean(M_true) * np.random.randn(k, k)
+    M_measured = np.where(random_mask, M_true + noise, 0)
+    
+    return M_measured, random_mask, F_true
+
+def phase_retrieval(M_measured, freq_mask, support_mask, max_iters=1000, beta=0.8, tol=1e-5, seed=None):
+    if seed is not None:
+        np.random.seed(seed)
+        
+    k = M_measured.shape[0]
+    random_phase = 2j * np.pi * np.random.rand(k, k)
+    F_current = np.where(freq_mask, M_measured * np.exp(random_phase), 0)
+    x_current = np.abs(np.fft.ifft2(np.fft.ifftshift(F_current)))
+    
+    best_recon = x_current.copy()
+    best_error = float('inf')
+    errors = []
+    
+    for i in range(max_iters):
+        F_spectrum = np.fft.fftshift(np.fft.fft2(x_current))
+        magnitude = np.abs(F_spectrum)
+        magnitude = np.maximum(magnitude, 1e-12)
+        phase = F_spectrum / magnitude
+        
+        F_spectrum = np.where(freq_mask, M_measured * phase, F_spectrum)
+        
+        x_temp = np.real(np.fft.ifft2(np.fft.ifftshift(F_spectrum)))
+        x_temp = np.maximum(0, x_temp)
+        x_temp = x_temp * support_mask
+        
+        violation = np.logical_or(x_temp < 0, ~support_mask)
+        x_current = np.where(violation, x_current - beta * x_temp, x_temp)
+        
+        if i % 10 == 0:
+            F_spectrum = np.fft.fftshift(np.fft.fft2(x_current))
+            measured_mags = np.abs(F_spectrum[freq_mask])
+            target_mags = M_measured[freq_mask]
+            error = np.linalg.norm(measured_mags - target_mags) / np.linalg.norm(target_mags)
+            errors.append(error)
+            
+            if error < best_error:
+                best_recon = x_current.copy()
+                best_error = error
+            
+            if i > 100 and np.abs(np.mean(errors[-10:]) - np.mean(errors[-20:-10])) < tol:
+                print(f"Converged at iteration {i} with error {error:.6f}")
+                break
+    else:
+        print(f"Stopped at max iterations {max_iters} with error {best_error:.6f}")
+    
+    return best_recon, errors, best_error
+
+def evaluate_results(original, reconstructed, M_measured, freq_mask):
+    mse = np.mean((original - reconstructed)**2)
+    normalized_mse = mse / np.mean(original**2)
+    corr = np.corrcoef(original.flatten(), reconstructed.flatten())[0, 1]
+    
+    F_recon = np.fft.fftshift(np.fft.fft2(reconstructed))
+    measured_mags = np.abs(F_recon[freq_mask])
+    target_mags = M_measured[freq_mask]
+    freq_error = np.linalg.norm(measured_mags - target_mags) / np.linalg.norm(target_mags)
+    
+    return normalized_mse, corr, freq_error
+
+def main():
+    original, support_mask = create_ground_truth(256)
+    M_measured, freq_mask, F_true = create_measurements(original, noise_level=0.05)
+    
+    best_recon = None
+    best_error = float('inf')
+    best_errors_list = []
+    seeds = [42, 123, 999, 2025, 7]
+    
+    for s in seeds:
+        recon, errors, final_error = phase_retrieval(M_measured, freq_mask, support_mask, seed=s)
+        if final_error < best_error:
+            best_error = final_error
+            best_recon = recon
+            best_errors_list = errors
+    
+    nmse, corr, freq_err = evaluate_results(original, best_recon, M_measured, freq_mask)
+    
+    plt.figure(figsize=(15, 10))
+    
+    plt.subplot(2, 3, 1)
+    plt.imshow(original, cmap='gray')
+    plt.title('Ground Truth')
+    plt.axis('off')
+    
+    plt.subplot(2, 3, 2)
+    plt.imshow(freq_mask, cmap='gray')
+    plt.title(f'Sampling Mask\n({np.mean(freq_mask)*100:.1f}% kept)')
+    plt.axis('off')
+    
+    plt.subplot(2, 3, 3)
+    plt.imshow(best_recon, cmap='gray')
+    plt.title(f'Reconstruction\nNMSE: {nmse:.4f}, Corr: {corr:.4f}')
+    plt.axis('off')
+    
+    plt.subplot(2, 3, 4)
+    plt.imshow(np.log(1 + np.abs(F_true)), cmap='viridis')
+    plt.title('True Spectrum (log)')
+    plt.axis('off')
+    
+    plt.subplot(2, 3, 5)
+    plt.plot(best_errors_list)
+    plt.title('Error Convergence')
+    plt.xlabel('Iteration')
+    plt.ylabel('Relative Error')
+    plt.grid(True)
+    
+    plt.subplot(2, 3, 6)
+    residual = np.abs(original - best_recon)
+    plt.imshow(residual, cmap='hot')
+    plt.title('Residual')
+    plt.colorbar()
+    plt.axis('off')
+    
+    plt.tight_layout()
+    plt.savefig('phase_retrieval_results.png', dpi=300, bbox_inches='tight')
+    plt.show()
+
+if __name__ == "__main__":
+    main()
