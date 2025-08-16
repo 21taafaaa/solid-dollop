@@ -1,0 +1,51 @@
+import pandas as pd
+import numpy as np
+import random
+from datetime import timedelta
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+def create_fake_data(n_events=8000, start_date="2023-01-01", end_date="2023-03-31"):
+    np.random.seed(42)
+    random.seed(42)
+    start = pd.to_datetime(start_date)
+    end = pd.to_datetime(end_date)
+    n_days = (end - start).days
+    platforms = ["android", "ios", "web"]
+    event_types = ["login", "play_video", "like", "comment", "logout"]
+    data = {
+        "id_event": np.arange(1, n_events+1),
+        "id_user": np.random.randint(1, 2000, size=n_events),
+        "timestamp": [start + timedelta(days=random.randint(0, n_days),
+                                        hours=random.randint(0, 23),
+                                        minutes=random.randint(0, 59)) for _ in range(n_events)],
+        "platform": np.random.choice(platforms, size=n_events, p=[0.4, 0.3, 0.3]),
+        "event_type": np.random.choice(event_types, size=n_events, p=[0.1, 0.45, 0.25, 0.1, 0.1]),
+        "id_video": np.random.randint(1, 1000, size=n_events),
+        "sec_time_watch": np.random.randint(5, 600, size=n_events),
+        "sec_duration_video": np.random.randint(60, 1200, size=n_events)
+    }
+    df = pd.DataFrame(data)
+    df.loc[df["event_type"] != "play_video", "sec_time_watch"] = np.nan
+    df.loc[df["event_type"] != "play_video", "sec_duration_video"] = np.nan
+    df.loc[df["sec_time_watch"] > df["sec_duration_video"], "sec_time_watch"] = df["sec_duration_video"]
+    return df
+
+df = create_fake_data()
+
+engagement_weights = {"comment": 5, "like": 3, "play_video": 1, "login": 0, "logout": 0}
+df["score_engagement"] = df["event_type"].map(engagement_weights)
+df["date"] = pd.to_datetime(df["timestamp"]).dt.date
+
+daily_engagement = df.groupby(["date", "platform"])["score_engagement"].sum().reset_index()
+pivot_df = daily_engagement.pivot(index="date", columns="platform", values="score_engagement").fillna(0)
+
+plt.figure(figsize=(14, 7))
+sns.heatmap(pivot_df.T, cmap="YlOrRd", cbar_kws={'label': 'Engagement Score'}, linewidths=.5)
+plt.title("Daily Engagement Score by Platform", fontsize=16)
+plt.xlabel("Date")
+plt.ylabel("Platform")
+plt.xticks(rotation=45, ha="right")
+plt.yticks(rotation=0)
+plt.tight_layout()
+plt.show()
